@@ -43,7 +43,11 @@ def chat(
     if not question:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question must not be empty.")
 
-    logger.info("chat request received, question_length=%d", len(question))
+    logger.info(
+        "chat request received, question_length=%d scoped=%s",
+        len(question),
+        bool(request.document_id),
+    )
 
     # Note: a missing API key (ConfigurationError) can't surface here --
     # retriever/llm are constructed by FastAPI's dependency injection
@@ -51,7 +55,7 @@ def chat(
     # handled globally in app/main.py instead.
     try:
         logger.info("retrieval started, top_k=%d", settings.top_k)
-        chunks = retriever.retrieve(question, top_k=settings.top_k)
+        chunks = retriever.retrieve(question, top_k=settings.top_k, document_id=request.document_id)
         logger.info(
             "retrieval complete, chunks_retrieved=%d scores=%s",
             len(chunks),
@@ -78,10 +82,25 @@ def chat(
 
     # Multiple retrieved chunks can come from the same page -- collapse
     # to one Source entry per (filename, page) pair, in first-seen order.
+    # Each source carries the best-scoring chunk's passage text and score
+    # so the UI can show a citation snippet, not just a page number.
     seen: dict[tuple[str, int], Source] = {}
     for c in chunks:
         filename = c.metadata.get("filename", "unknown")
         page = c.metadata.get("page_number", 0)
-        seen.setdefault((filename, page), Source(filename=filename, page=page))
+        key = (filename, page)
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = Source(
+                filename=filename,
+                page=page,
+                text=c.text,
+                score=round(c.score, 4) if c.score is not None else None,
+            )
+        elif c.score is not None and (existing.score is None or c.score > existing.score):
+            # Same page matched again with a stronger chunk -- keep that
+            # snippet/score, but don't change insertion order.
+            existing.text = c.text
+            existing.score = round(c.score, 4)
 
     return ChatResponse(answer=answer, sources=list(seen.values()))

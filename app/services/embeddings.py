@@ -21,6 +21,7 @@ same "one seam, swap the implementation" pattern used for the LLM
 service.
 """
 
+import time
 from abc import ABC, abstractmethod
 
 import openai
@@ -67,6 +68,21 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
+    # Gemini's batchEmbedContents rejects any request with more than 100
+    # items ("at most 100 requests can be in one batch"). A single
+    # document routinely produces more chunks than that, so split the
+    # batch and stitch the results back together in input order.
+    _MAX_BATCH = 100
+
+    # The free tier meters embedding calls per minute per base model and
+    # answers a burst with 429 RESOURCE_EXHAUSTED. Pause briefly between
+    # sub-batches, and retry a rejected batch a few times with a longer
+    # wait, so ingesting one multi-hundred-chunk document doesn't fail
+    # outright on a transient quota bump.
+    _INTER_BATCH_PAUSE_S = 1.0
+    _MAX_RETRIES = 4
+    _RETRY_WAIT_S = 30.0
+
     def __init__(self, api_key: str, model: str):
         if not api_key:
             raise ConfigurationError(
@@ -75,12 +91,27 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         self._client = genai.Client(api_key=api_key)
         self._model = model
 
+    def _embed_batch(self, batch: list[str]) -> list[list[float]]:
+        for attempt in range(self._MAX_RETRIES + 1):
+            try:
+                response = self._client.models.embed_content(model=self._model, contents=batch)
+                return [embedding.values for embedding in response.embeddings]
+            except genai_errors.APIError as e:
+                is_rate_limit = getattr(e, "code", None) == 429
+                if is_rate_limit and attempt < self._MAX_RETRIES:
+                    time.sleep(self._RETRY_WAIT_S)
+                    continue
+                raise EmbeddingGenerationError(f"Embedding request failed: {e}") from e
+        raise EmbeddingGenerationError("Embedding request failed: retries exhausted")
+
     def embed(self, texts: list[str]) -> list[list[float]]:
-        try:
-            response = self._client.models.embed_content(model=self._model, contents=texts)
-        except genai_errors.APIError as e:
-            raise EmbeddingGenerationError(f"Embedding request failed: {e}") from e
-        return [embedding.values for embedding in response.embeddings]
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self._MAX_BATCH):
+            if start > 0:
+                time.sleep(self._INTER_BATCH_PAUSE_S)
+            batch = texts[start : start + self._MAX_BATCH]
+            vectors.extend(self._embed_batch(batch))
+        return vectors
 
 
 def _default_embedding_provider() -> EmbeddingProvider:

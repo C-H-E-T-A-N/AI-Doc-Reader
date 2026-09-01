@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
+    # Used when llm_provider == "openai" -- lets one OpenAI key drive both
+    # embeddings and answer generation.
+    openai_llm_model: str = "gpt-4o-mini"
 
     anthropic_api_key: str = ""
     llm_model: str = "claude-sonnet-5"
@@ -49,6 +52,13 @@ class Settings(BaseSettings):
 
     # --- Limits ---
     max_upload_mb: int = 25
+
+    # --- CORS ---
+    # Comma-separated list of origins allowed to call this API from a
+    # browser, or "*" for any. The chat UI (see web/) is served from a
+    # different origin -- localhost during dev, a Vercel domain once
+    # deployed -- so the browser needs these headers to allow the call.
+    cors_allow_origins: str = "*"
 
 
 # Imported everywhere else as: from app.config import settings

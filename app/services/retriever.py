@@ -47,7 +47,13 @@ class Retriever:
         self._embeddings = embedding_service
         self._vector_store = vector_store
 
-    def retrieve(self, query: str, top_k: int) -> list[RetrievedChunk]:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int,
+        document_id: str | None = None,
+    ) -> list[RetrievedChunk]:
         query_embedding = self._embeddings.embed_text(query)
-        results = self._vector_store.similarity_search(query_embedding, top_k=top_k)
+        where = {"document_id": document_id} if document_id else None
+        results = self._vector_store.similarity_search(query_embedding, top_k=top_k, where=where)
         return [RetrievedChunk(text=r["text"], score=r["score"], metadata=r["metadata"]) for r in results]

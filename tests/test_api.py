@@ -21,6 +21,7 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.dependencies import get_embedding_service, get_llm_service, get_vector_store
 from app.main import app
 from app.services.embeddings import EmbeddingProvider, EmbeddingService
@@ -44,8 +45,13 @@ class EchoFakeLLMProvider(LLMProvider):
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     vector_store = VectorStore(persist_directory=str(tmp_path / "chroma"), collection_name="test")
+
+    # Isolate on-disk artifacts: uploaded files land in tmp_path/uploads
+    # and the document registry sidecar in tmp_path/registry.json,
+    # instead of the project's real data/ directory.
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
 
     app.dependency_overrides[get_embedding_service] = lambda: EmbeddingService(
         provider=KeywordFakeEmbeddingProvider()
@@ -83,7 +89,10 @@ def test_upload_valid_pdf_returns_metadata(client):
     assert body["filename"] == "handbook.pdf"
     assert body["pages"] == 1
     assert body["chunks_indexed"] >= 1
-    assert body["status"] == "uploaded"
+    assert body["status"] == "indexed"
+    assert body["file_type"] == "pdf"
+    assert body["size_bytes"] > 0
+    assert body["uploaded_at"]
 
 
 def test_upload_rejects_non_pdf_file(client):
@@ -140,3 +149,77 @@ def test_full_pipeline_upload_then_chat_returns_grounded_answer_and_sources(clie
     assert any(s["filename"] == "handbook.pdf" for s in body["sources"])
     # The retrieved leave-policy chunk (page 1), not the working-hours chunk (page 2), should be cited first.
     assert body["sources"][0]["page"] == 1
+
+
+def _upload_pdf(client, pages, filename):
+    resp = client.post(
+        "/documents/upload",
+        files={"file": (filename, io.BytesIO(_make_pdf_bytes(pages)), "application/pdf")},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def test_documents_listing_reflects_uploads_and_deletes(client):
+    assert client.get("/documents").json() == []
+
+    a = _upload_pdf(client, ["Leave policy: 24 paid leaves."], "a.pdf")
+    b = _upload_pdf(client, ["Dress code: business casual."], "b.pdf")
+
+    listing = client.get("/documents").json()
+    assert {d["document_id"] for d in listing} == {a["document_id"], b["document_id"]}
+    assert all(d["status"] == "indexed" and d["chunks"] >= 1 for d in listing)
+
+    # Single-document fetch.
+    one = client.get(f"/documents/{a['document_id']}")
+    assert one.status_code == 200
+    assert one.json()["filename"] == "a.pdf"
+
+    deleted = client.delete(f"/documents/{a['document_id']}")
+    assert deleted.status_code == 200
+    remaining = client.get("/documents").json()
+    assert [d["document_id"] for d in remaining] == [b["document_id"]]
+
+    # Deleting again is a clean 404, not a 500.
+    assert client.delete(f"/documents/{a['document_id']}").status_code == 404
+    assert client.get(f"/documents/{a['document_id']}").status_code == 404
+
+
+def test_chat_scoped_to_document_only_searches_that_document(client):
+    leave_doc = _upload_pdf(client, ["Employees receive 24 paid leaves per year."], "leave.pdf")
+    dress_doc = _upload_pdf(client, ["The dress code is business casual on weekdays."], "dress.pdf")
+
+    scoped = client.post(
+        "/chat", json={"question": "How many paid leaves?", "document_id": leave_doc["document_id"]}
+    )
+    assert scoped.status_code == 200
+    sources = scoped.json()["sources"]
+    assert sources and all(s["filename"] == "leave.pdf" for s in sources)
+
+    # Scoping to the other document must not surface the leave chunk.
+    other = client.post(
+        "/chat", json={"question": "How many paid leaves?", "document_id": dress_doc["document_id"]}
+    )
+    assert all(s["filename"] != "leave.pdf" for s in other.json()["sources"])
+
+
+def test_chat_sources_include_passage_text_and_score(client):
+    _upload_pdf(client, ["Employees receive 24 paid leaves per year."], "handbook.pdf")
+    body = client.post("/chat", json={"question": "How many paid leaves do employees get?"}).json()
+
+    assert body["sources"], "expected at least one source"
+    top = body["sources"][0]
+    assert top["text"] and "leave" in top["text"].lower()
+    assert isinstance(top["score"], (int, float))
+
+
+def test_document_file_is_served_and_removed_with_the_document(client):
+    doc = _upload_pdf(client, ["Employees receive 24 paid leaves per year."], "handbook.pdf")
+
+    file_resp = client.get(f"/documents/{doc['document_id']}/file")
+    assert file_resp.status_code == 200
+    assert file_resp.headers["content-type"] == "application/pdf"
+    assert file_resp.content[:4] == b"%PDF"
+
+    client.delete(f"/documents/{doc['document_id']}")
+    assert client.get(f"/documents/{doc['document_id']}/file").status_code == 404

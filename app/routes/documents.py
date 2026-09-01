@@ -18,10 +18,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.dependencies import get_embedding_service, get_vector_store
-from app.models.schemas import DocumentUploadResponse
+from app.models.schemas import DocumentInfo, DocumentUploadResponse
+from app.services import registry
 from app.services.chunker import chunk_pages
 from app.services.document_loader import PDFExtractionError, extract_text
 from app.services.embeddings import EmbeddingGenerationError, EmbeddingService
@@ -30,6 +32,10 @@ from app.services.vector_store import VectorStore, VectorStoreError
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _stored_path(document_id: str) -> Path:
+    return Path(settings.upload_dir) / f"{document_id}.pdf"
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -111,11 +117,88 @@ async def upload_document(
 
     logger.info("document_id=%s indexed successfully, %d chunks stored", document_id, len(chunks))
 
+    uploaded_at = registry.now_iso()
+    registry.add_document(
+        {
+            "document_id": document_id,
+            "filename": file.filename,
+            "file_type": "pdf",
+            "size_bytes": size,
+            "pages": extracted.total_pages,
+            "characters": extracted.total_characters,
+            "chunks": len(chunks),
+            "uploaded_at": uploaded_at,
+            "status": "indexed",
+        }
+    )
+
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename,
+        file_type="pdf",
+        size_bytes=size,
         pages=extracted.total_pages,
         characters=extracted.total_characters,
         chunks_indexed=len(chunks),
-        status="uploaded",
+        uploaded_at=uploaded_at,
+        status="indexed",
+    )
+
+
+@router.get("", response_model=list[DocumentInfo])
+def list_documents() -> list[DocumentInfo]:
+    """Every indexed document, newest first -- the sidebar's data source."""
+    return [DocumentInfo(**record) for record in registry.list_documents()]
+
+
+@router.get("/{document_id}", response_model=DocumentInfo)
+def get_document(document_id: str) -> DocumentInfo:
+    record = registry.get_document(document_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+    return DocumentInfo(**record)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_200_OK)
+def delete_document(
+    document_id: str,
+    vector_store: VectorStore = Depends(get_vector_store),
+) -> dict:
+    """Remove a document everywhere: its chunks in the vector store, the
+    stored file on disk, and its registry entry."""
+    record = registry.get_document(document_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    try:
+        vector_store.delete_document(document_id)
+    except VectorStoreError as e:
+        logger.error("document_id=%s delete failed: %s", document_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to delete the document. Please try again.",
+        ) from e
+
+    _stored_path(document_id).unlink(missing_ok=True)
+    registry.remove_document(document_id)
+    logger.info("document_id=%s deleted", document_id)
+    return {"document_id": document_id, "status": "deleted"}
+
+
+@router.get("/{document_id}/file")
+def get_document_file(document_id: str) -> FileResponse:
+    """Stream the original PDF so the UI can open a cited page in place."""
+    record = registry.get_document(document_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    path = _stored_path(document_id)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file is missing.")
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=record.get("filename", f"{document_id}.pdf"),
+        content_disposition_type="inline",
     )

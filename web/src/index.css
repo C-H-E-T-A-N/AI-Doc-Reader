@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------ */
+/*  Design tokens                                                      */
+/*  Light and dark are two hand-tuned systems, not an inversion.       */
+/*  Values are space-separated RGB channels so Tailwind's <alpha-value>*/
+/*  can apply opacity (see tailwind.config.js).                        */
+/* ------------------------------------------------------------------ */
+:root {
+  --canvas: 255 255 255;
+  --surface: 250 250 250;
+  --surface-hover: 244 244 245;
+  --elevated: 255 255 255;
+  --border: 228 228 231;
+  --border-strong: 212 212 216;
+  --content: 24 24 27;
+  --muted: 82 82 91;
+  --faint: 161 161 170;
+  --accent: 79 70 229;
+  --accent-hover: 67 56 202;
+  --accent-contrast: 255 255 255;
+  --accent-subtle: 238 242 255;
+  --positive: 22 163 74;
+  --warning: 217 119 6;
+  --danger: 220 38 38;
+  --danger-subtle: 254 242 242;
+}
+
+.dark {
+  --canvas: 10 10 11;
+  --surface: 20 20 23;
+  --surface-hover: 30 30 34;
+  --elevated: 24 24 27;
+  --border: 39 39 42;
+  --border-strong: 63 63 70;
+  --content: 244 244 245;
+  --muted: 161 161 170;
+  --faint: 113 113 122;
+  --accent: 129 140 248;
+  --accent-hover: 165 180 252;
+  --accent-contrast: 17 17 20;
+  --accent-subtle: 30 27 60;
+  --positive: 74 222 128;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --danger-subtle: 40 20 22;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-content antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Focus ring — consistent, visible, keyboard-only where supported */
+:where(a, button, input, textarea, [tabindex]):focus-visible {
+  @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.22);
+}
+
+/* Thin, unobtrusive scrollbars */
+@supports (scrollbar-width: thin) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border-strong)) transparent;
+  }
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--border-strong));
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium
+           transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60
+           focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+  .btn-sm {
+    @apply h-8 px-3;
+  }
+  .btn-md {
+    @apply h-9 px-4;
+  }
+  .btn-primary {
+    @apply bg-accent text-accent-contrast hover:bg-accent-hover;
+  }
+  .btn-ghost {
+    @apply text-muted hover:bg-surface-hover hover:text-content;
+  }
+  .btn-outline {
+    @apply border border-border-strong bg-transparent text-content hover:bg-surface-hover;
+  }
+  .btn-danger {
+    @apply bg-transparent text-danger hover:bg-danger/10;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-content
+           placeholder:text-faint focus:border-accent focus:outline-none focus:ring-2
+           focus:ring-accent/25;
+  }
+
+  .card {
+    @apply rounded-xl border border-border bg-elevated;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Markdown rendering for assistant answers                           */
+/* ------------------------------------------------------------------ */
+.markdown {
+  @apply text-[15px] leading-relaxed text-content;
+}
+.markdown > * + * {
+  @apply mt-3;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  @apply font-semibold text-content;
+}
+.markdown h1 {
+  @apply mt-5 text-lg;
+}
+.markdown h2 {
+  @apply mt-5 text-base;
+}
+.markdown h3 {
+  @apply mt-4 text-[15px];
+}
+.markdown p {
+  @apply text-content;
+}
+.markdown a {
+  @apply font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent;
+}
+.markdown ul {
+  @apply list-disc space-y-1 pl-5 marker:text-faint;
+}
+.markdown ol {
+  @apply list-decimal space-y-1 pl-5 marker:text-faint;
+}
+.markdown li > ul,
+.markdown li > ol {
+  @apply mt-1;
+}
+.markdown blockquote {
+  @apply border-l-2 border-border-strong pl-4 italic text-muted;
+}
+.markdown code {
+  @apply rounded bg-surface-hover px-1.5 py-0.5 font-mono text-[0.85em] text-content;
+}
+.markdown pre {
+  @apply overflow-x-auto rounded-lg border border-border bg-surface p-3.5 text-[13px] leading-relaxed;
+}
+.markdown pre code {
+  @apply bg-transparent p-0 text-content;
+}
+.markdown table {
+  @apply block w-full overflow-x-auto border-collapse text-sm;
+}
+.markdown th,
+.markdown td {
+  @apply border border-border px-3 py-1.5 text-left;
+}
+.markdown th {
+  @apply bg-surface font-semibold;
+}
+.markdown hr {
+  @apply border-border;
+}

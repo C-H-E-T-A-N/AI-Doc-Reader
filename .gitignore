@@ -12,6 +12,7 @@ venv/
 # Uploaded documents and vector DB data (runtime artifacts, not source)
 data/uploads/*
 !data/uploads/.gitkeep
+data/registry.json
 vector_db/*
 !vector_db/.gitkeep
 

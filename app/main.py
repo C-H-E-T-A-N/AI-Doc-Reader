@@ -26,8 +26,10 @@ API.
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.routes import chat, documents
 from app.services.exceptions import ConfigurationError
 
@@ -43,6 +45,20 @@ app = FastAPI(
     title="RAG Document Q&A API",
     description="A from-scratch Retrieval-Augmented Generation pipeline, built as a learning project.",
     version="0.1.0",
+)
+
+# A browser loading the UI from another origin (localhost:3000 in dev, a
+# Vercel domain in production) can only call this API if the server
+# answers CORS preflight with matching headers. We send no cookies or
+# auth headers, so allow_credentials stays False -- which is also what
+# lets allow_origins be "*".
+_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins or ["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(documents.router)
