@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 5 of 12 complete (vector store). See "Build stages" below.
+> Status: Stage 6 of 12 complete (retrieval). See "Build stages" below.
 
 ## What this project does
 
@@ -152,7 +152,7 @@ This project is being built incrementally, as a teaching exercise, in this order
 3. ✅ Chunking
 4. ✅ Embeddings (concept walkthrough + service) -- real API calls need `OPENAI_API_KEY` in `.env`
 5. ✅ Vector store (ChromaDB)
-6. Retrieval
+6. ✅ Retrieval
 7. Prompt construction + LLM service
 8. `/chat` endpoint — full pipeline wired together
 9. Error handling + logging
@@ -171,11 +171,11 @@ LangChain/LlamaIndex would give you for free.
 pytest
 ```
 
-Currently covers: chunking (`tests/test_chunker.py`), the embedding service interface
-(`tests/test_embeddings.py`, using a fake provider), and the vector store
-(`tests/test_vector_store.py`, using a per-test temp directory so tests never touch the
-project's real `vector_db/`). No network/API key required to run tests so far. More is added
-at each stage; the full suite (unit + API + RAG-specific tests) is built out in Stage 10.
+Currently covers: chunking, the embedding service interface, the vector store, and the
+retriever (`tests/test_chunker.py`, `test_embeddings.py`, `test_vector_store.py`,
+`test_retriever.py`) -- 25 tests total, all using fakes/temp directories, no network or API
+key required. More is added at each stage; the full suite (unit + API + RAG-specific tests)
+is built out in Stage 10.
 
 ## Known limitations (current stage)
 
