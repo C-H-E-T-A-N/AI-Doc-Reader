@@ -1,6 +1,7 @@
 """
-Text -> vector, via a real embedding model (OpenAI by default, Gemini
-as an alternative -- see settings.embedding_provider).
+Text -> vector, via a real embedding model. Providers
+(settings.embedding_provider): "openai" (default), "gemini", or "local"
+(on-device ONNX all-MiniLM-L6-v2, no API key).
 
 See the hand-rolled cosine-similarity demo run alongside this stage for
 the concept in isolation. The short version: a trained embedding model
@@ -114,9 +115,42 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         return vectors
 
 
+class LocalEmbeddingProvider(EmbeddingProvider):
+    """Runs entirely on this machine -- no API key, no network after the
+    one-time model download.
+
+    Uses the `all-MiniLM-L6-v2` sentence-transformer exported to ONNX,
+    which ChromaDB already bundles (its default embedding function), so
+    this needs no new dependency: `onnxruntime` and `tokenizers` ship
+    with chromadb. First use downloads ~80 MB to ~/.cache/chroma and
+    caches it; subsequent runs are offline. Output is 384-dimensional
+    (vs. 1536 for OpenAI) -- switching to/from this provider means the
+    vector DB has to be re-indexed, since a collection's dimension is
+    fixed on first write.
+    """
+
+    def __init__(self, model: str | None = None):
+        # Imported lazily so the heavy onnxruntime import only happens
+        # when this provider is actually selected.
+        from chromadb.utils import embedding_functions as _ef
+
+        self._fn = _ef.ONNXMiniLM_L6_V2()
+        self._model = model or "all-MiniLM-L6-v2"
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        try:
+            vectors = self._fn(texts)
+        except Exception as e:  # noqa: BLE001 -- collapse any local-inference failure
+            raise EmbeddingGenerationError(f"Local embedding failed: {e}") from e
+        # ONNXMiniLM_L6_V2 returns numpy arrays; normalise to plain lists.
+        return [list(map(float, v)) for v in vectors]
+
+
 def _default_embedding_provider() -> EmbeddingProvider:
     if settings.embedding_provider == "gemini":
         return GeminiEmbeddingProvider(api_key=settings.gemini_api_key, model=settings.gemini_embedding_model)
+    if settings.embedding_provider == "local":
+        return LocalEmbeddingProvider(model=settings.local_embedding_model)
     return OpenAIEmbeddingProvider(api_key=settings.openai_api_key, model=settings.embedding_model)
 
 

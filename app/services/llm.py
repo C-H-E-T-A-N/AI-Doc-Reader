@@ -1,7 +1,8 @@
 """
-LLM service: a constructed Prompt -> a generated answer, via Anthropic
-Claude by default, or Gemini / OpenAI (settings.llm_provider =
-"gemini" / "openai").
+LLM service: a constructed Prompt -> a generated answer.
+
+Providers (settings.llm_provider): "anthropic" (default), "openai",
+"gemini", or "groq" (Groq's OpenAI-compatible free tier).
 
 Same "one seam" pattern as embeddings.py: LLMProvider is the only place
 a provider SDK (`anthropic`, `google.genai`, `openai`) is imported.
@@ -102,14 +103,25 @@ class GeminiLLMProvider(LLMProvider):
 
 
 class OpenAILLMProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str, max_tokens: int = 1024):
+    """OpenAI, or any OpenAI-compatible chat endpoint (e.g. Groq) via
+    `base_url`."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        max_tokens: int = 1024,
+        base_url: str | None = None,
+        key_name: str = "OPENAI_API_KEY",
+    ):
         if not api_key:
             raise ConfigurationError(
-                "OPENAI_API_KEY is not set. LLM generation requires it -- add it to your .env file."
+                f"{key_name} is not set. LLM generation requires it -- add it to your .env file."
             )
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
         self._max_tokens = max_tokens
+        self._label = "OpenAI" if base_url is None else "The LLM provider"
 
     def generate(self, prompt: Prompt) -> str:
         try:
@@ -127,10 +139,24 @@ class OpenAILLMProvider(LLMProvider):
         content = response.choices[0].message.content
         if content is None:
             raise LLMGenerationError(
-                f"OpenAI returned no answer text (finish_reason="
-                f"{response.choices[0].finish_reason})."
+                f"{self._label} returned no answer text "
+                f"(finish_reason={response.choices[0].finish_reason})."
             )
         return content
+
+
+class GroqLLMProvider(OpenAILLMProvider):
+    """Groq's OpenAI-compatible API -- generous free tier, no card.
+    Key: https://console.groq.com/keys"""
+
+    def __init__(self, api_key: str, model: str, base_url: str, max_tokens: int = 1024):
+        super().__init__(
+            api_key=api_key,
+            model=model,
+            max_tokens=max_tokens,
+            base_url=base_url,
+            key_name="GROQ_API_KEY",
+        )
 
 
 def _default_llm_provider() -> LLMProvider:
@@ -138,6 +164,12 @@ def _default_llm_provider() -> LLMProvider:
         return GeminiLLMProvider(api_key=settings.gemini_api_key, model=settings.gemini_llm_model)
     if settings.llm_provider == "openai":
         return OpenAILLMProvider(api_key=settings.openai_api_key, model=settings.openai_llm_model)
+    if settings.llm_provider == "groq":
+        return GroqLLMProvider(
+            api_key=settings.groq_api_key,
+            model=settings.groq_llm_model,
+            base_url=settings.groq_base_url,
+        )
     return AnthropicLLMProvider(api_key=settings.anthropic_api_key, model=settings.llm_model)
 
 

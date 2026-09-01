@@ -3,6 +3,9 @@ dist
 dist-ssr
 *.local
 *.tsbuildinfo
+
+# Vercel CLI project link
+.vercel
 .env
 .env.*.local
 

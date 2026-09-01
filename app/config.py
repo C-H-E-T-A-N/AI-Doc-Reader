@@ -15,9 +15,11 @@ class Settings(BaseSettings):
     # --- Providers ---
     # embedding_provider/llm_provider select which class EmbeddingService/
     # LLMService construct by default (see app/services/embeddings.py and
-    # llm.py) -- "openai"/"anthropic" (default) or "gemini". Switching
-    # providers never touches routes, retrieval, or prompt code: that's
-    # the point of the EmbeddingProvider/LLMProvider abstraction.
+    # llm.py). Switching providers never touches routes, retrieval, or
+    # prompt code: that's the point of the EmbeddingProvider/LLMProvider
+    # abstraction.
+    #   embedding_provider: "openai" (default), "gemini", "local" (no key)
+    #   llm_provider:       "anthropic" (default), "openai", "gemini", "groq"
     embedding_provider: str = "openai"
     llm_provider: str = "anthropic"
 
@@ -27,6 +29,16 @@ class Settings(BaseSettings):
     # Used when llm_provider == "openai" -- lets one OpenAI key drive both
     # embeddings and answer generation.
     openai_llm_model: str = "gpt-4o-mini"
+
+    # embedding_provider == "local": no API key, runs on-device via the
+    # ONNX all-MiniLM-L6-v2 model bundled with chromadb (384-dim output).
+    local_embedding_model: str = "all-MiniLM-L6-v2"
+
+    # llm_provider == "groq": OpenAI-compatible endpoint, generous free
+    # tier, no card. Key from https://console.groq.com/keys
+    groq_api_key: str = ""
+    groq_llm_model: str = "llama-3.3-70b-versatile"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
 
     anthropic_api_key: str = ""
     llm_model: str = "claude-sonnet-5"
