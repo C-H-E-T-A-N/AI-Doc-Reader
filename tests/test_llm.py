@@ -1,0 +1,30 @@
+import pytest
+
+from app.services.llm import AnthropicLLMProvider, LLMProvider, LLMService
+from app.services.prompt_builder import Prompt
+
+
+class FakeLLMProvider(LLMProvider):
+    def __init__(self, response: str = "fake answer"):
+        self.response = response
+        self.received_prompts: list[Prompt] = []
+
+    def generate(self, prompt: Prompt) -> str:
+        self.received_prompts.append(prompt)
+        return self.response
+
+
+def test_llm_service_delegates_to_its_provider():
+    provider = FakeLLMProvider(response="Employees get 24 paid leaves per year.")
+    service = LLMService(provider=provider)
+
+    answer = service.generate(Prompt(system="sys", user="user question"))
+
+    assert answer == "Employees get 24 paid leaves per year."
+    assert len(provider.received_prompts) == 1
+    assert provider.received_prompts[0].user == "user question"
+
+
+def test_anthropic_provider_requires_an_api_key():
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        AnthropicLLMProvider(api_key="", model="claude-sonnet-5")
