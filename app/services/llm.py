@@ -10,10 +10,16 @@ file.
 
 from abc import ABC, abstractmethod
 
+import anthropic
 from anthropic import Anthropic
 
 from app.config import settings
+from app.services.exceptions import ConfigurationError
 from app.services.prompt_builder import Prompt
+
+
+class LLMGenerationError(Exception):
+    """Raised when the LLM provider fails (network, rate limit, auth, bad request, ...)."""
 
 
 class LLMProvider(ABC):
@@ -25,7 +31,7 @@ class LLMProvider(ABC):
 class AnthropicLLMProvider(LLMProvider):
     def __init__(self, api_key: str, model: str, max_tokens: int = 1024):
         if not api_key:
-            raise ValueError(
+            raise ConfigurationError(
                 "ANTHROPIC_API_KEY is not set. LLM generation requires it -- add it to your .env file."
             )
         self._client = Anthropic(api_key=api_key)
@@ -33,12 +39,15 @@ class AnthropicLLMProvider(LLMProvider):
         self._max_tokens = max_tokens
 
     def generate(self, prompt: Prompt) -> str:
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=prompt.system,
-            messages=[{"role": "user", "content": prompt.user}],
-        )
+        try:
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=prompt.system,
+                messages=[{"role": "user", "content": prompt.user}],
+            )
+        except anthropic.AnthropicError as e:
+            raise LLMGenerationError(f"LLM request failed: {e}") from e
         return response.content[0].text
 
 

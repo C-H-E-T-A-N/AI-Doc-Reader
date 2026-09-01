@@ -39,6 +39,10 @@ from app.config import settings
 from app.services.chunker import Chunk
 
 
+class VectorStoreError(Exception):
+    """Raised when a ChromaDB operation fails (disk I/O, corruption, internal errors, ...)."""
+
+
 class VectorStore:
     def __init__(self, persist_directory: str | None = None, collection_name: str | None = None):
         self._client = chromadb.PersistentClient(
@@ -81,17 +85,23 @@ class VectorStore:
             }
             for c in chunks
         ]
-        self._collection.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        try:
+            self._collection.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        except Exception as e:
+            raise VectorStoreError(f"Failed to store chunks in the vector database: {e}") from e
 
     def similarity_search(self, query_embedding: list[float], top_k: int) -> list[dict]:
         """Return up to top_k chunks closest to query_embedding, best match first."""
-        if self._collection.count() == 0:
-            return []
-
-        results = self._collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(top_k, self._collection.count()),
-        )
+        try:
+            count = self._collection.count()
+            if count == 0:
+                return []
+            results = self._collection.query(
+                query_embeddings=[query_embedding],
+                n_results=min(top_k, count),
+            )
+        except Exception as e:
+            raise VectorStoreError(f"Vector search failed: {e}") from e
 
         matches = []
         for id_, text, metadata, distance in zip(
@@ -112,7 +122,10 @@ class VectorStore:
         return matches
 
     def delete_document(self, document_id: str) -> None:
-        self._collection.delete(where={"document_id": document_id})
+        try:
+            self._collection.delete(where={"document_id": document_id})
+        except Exception as e:
+            raise VectorStoreError(f"Failed to delete document {document_id!r}: {e}") from e
 
     def count(self) -> int:
         return self._collection.count()

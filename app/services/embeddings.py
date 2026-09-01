@@ -21,9 +21,15 @@ implementation" pattern used for the LLM service later.
 
 from abc import ABC, abstractmethod
 
+import openai
 from openai import OpenAI
 
 from app.config import settings
+from app.services.exceptions import ConfigurationError
+
+
+class EmbeddingGenerationError(Exception):
+    """Raised when the embedding provider fails (network, rate limit, auth, bad request, ...)."""
 
 
 class EmbeddingProvider(ABC):
@@ -35,7 +41,7 @@ class EmbeddingProvider(ABC):
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     def __init__(self, api_key: str, model: str):
         if not api_key:
-            raise ValueError(
+            raise ConfigurationError(
                 "OPENAI_API_KEY is not set. Embeddings require it -- add it to your .env file."
             )
         self._client = OpenAI(api_key=api_key)
@@ -46,7 +52,13 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         # this matters at ingestion time when a document can produce
         # hundreds of chunks. The API guarantees the response order
         # matches the input order.
-        response = self._client.embeddings.create(model=self._model, input=texts)
+        try:
+            response = self._client.embeddings.create(model=self._model, input=texts)
+        except openai.OpenAIError as e:
+            # Covers connection errors, rate limits, auth failures, bad
+            # requests, etc. -- all provider-side failures collapse to
+            # one type the route layer can handle uniformly.
+            raise EmbeddingGenerationError(f"Embedding request failed: {e}") from e
         return [item.embedding for item in response.data]
 
 

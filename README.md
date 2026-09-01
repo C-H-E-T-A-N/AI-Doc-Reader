@@ -4,8 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 8 of 12 complete -- the full RAG pipeline works end-to-end. See "Build stages"
-> below.
+> Status: Stage 9 of 12 complete (error handling + logging). See "Build stages" below.
 
 ## What this project does
 
@@ -189,7 +188,7 @@ This project is being built incrementally, as a teaching exercise, in this order
 6. ✅ Retrieval
 7. ✅ Prompt construction + LLM service -- real generation needs `ANTHROPIC_API_KEY` in `.env`
 8. ✅ `/chat` endpoint + wired-up ingestion — full pipeline works end-to-end
-9. Error handling + logging
+9. ✅ Error handling + logging
 10. Test suite
 11. Evaluation harness
 12. Full documentation
@@ -206,9 +205,41 @@ pytest
 ```
 
 Covers every service (chunking, embeddings, vector store, retriever, prompt construction, LLM
-service) plus API-level tests for the full upload → chat pipeline -- 40 tests total, all using
-fake providers and temp directories, no network or API key required. More edge cases and
+service) plus API-level tests for the full upload → chat pipeline and the error-handling paths
+(missing API key, provider failures, unexpected exceptions) -- 46 tests total, all using fake
+providers and temp directories, no network or API key required. More edge cases and
 RAG-specific grounding tests are added in Stage 10/11.
+
+## Error handling
+
+| Failure | Status | Notes |
+|---|---|---|
+| Non-PDF file / empty file | 400 | checked before any processing |
+| Oversized upload | 413 | enforced while streaming to disk, not after |
+| Encrypted PDF / no extractable text | 422 | see `document_loader.py` |
+| Empty question | 400 | |
+| Missing `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 503 | handled globally in `app/main.py` -- see note below |
+| Embedding/LLM/vector-DB provider request fails | 502 | network, rate limit, auth, etc. -- caught per-route |
+| Anything else unexpected | 500 | generic message only; full exception logged server-side, never returned to the client |
+
+Worth understanding: a missing API key can't be caught by a route's own `try/except`, because
+`EmbeddingService`/`LLMService` are constructed by FastAPI's dependency injection
+(`Depends(get_x)`) *before* the route function body runs at all. That failure is instead
+handled by a dedicated `@app.exception_handler(ConfigurationError)` in `app/main.py` -- one of
+the more subtle FastAPI behaviors this project surfaced by testing it directly rather than
+assuming the route-level `try/except` would cover every case.
+
+## Logging
+
+A `/chat` request logs its own pipeline stages (no prompt content or secrets, only counts/
+scores/lengths):
+```
+chat request received, question_length=30
+retrieval started, top_k=4
+retrieval complete, chunks_retrieved=1 scores=[1.0]
+llm request sending, model=claude-sonnet-5
+llm response generated, answer_length=42
+```
 
 ## Known limitations (current stage)
 
@@ -218,8 +249,8 @@ RAG-specific grounding tests are added in Stage 10/11.
 - Text-based PDFs only for now; scanned/image PDFs need OCR (out of scope for this version —
   see `app/services/document_loader.py` for why).
 - Encrypted/password-protected PDFs are rejected rather than prompted for a password.
-- Error handling is minimal so far (missing key, empty question, bad file type/empty file, no
-  extractable text) -- broader coverage (LLM/embedding/vector-DB failures, oversized
-  documents) is Stage 9.
+- API tests write real files to `data/uploads/` rather than an isolated temp directory --
+  functionally correct but not fully isolated; proper test-level isolation of `UPLOAD_DIR` is
+  addressed in Stage 10.
 - No conversation history -- each `/chat` call is independent; no evaluation harness yet
   (Stage 11) to measure retrieval/answer quality beyond manual inspection.

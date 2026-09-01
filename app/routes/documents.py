@@ -24,8 +24,8 @@ from app.dependencies import get_embedding_service, get_vector_store
 from app.models.schemas import DocumentUploadResponse
 from app.services.chunker import chunk_pages
 from app.services.document_loader import PDFExtractionError, extract_text
-from app.services.embeddings import EmbeddingService
-from app.services.vector_store import VectorStore
+from app.services.embeddings import EmbeddingGenerationError, EmbeddingService
+from app.services.vector_store import VectorStore, VectorStoreError
 
 logger = logging.getLogger(__name__)
 
@@ -78,15 +78,38 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
     chunks = chunk_pages(extracted.pages, chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap)
-    logger.info("document_id=%s filename=%s -> %d chunks", document_id, file.filename, len(chunks))
-
-    embeddings = embedding_service.embed_documents([c.text for c in chunks])
-    vector_store.add_chunks(
-        document_id=document_id,
-        filename=file.filename,
-        chunks=chunks,
-        embeddings=embeddings,
+    logger.info(
+        "document_id=%s filename=%s pages=%d chars=%d -> %d chunks",
+        document_id,
+        file.filename,
+        extracted.total_pages,
+        extracted.total_characters,
+        len(chunks),
     )
+
+    # Note: a missing API key (ConfigurationError) can't surface here --
+    # embedding_service/vector_store are constructed by FastAPI's
+    # dependency injection before this function body even starts
+    # running, so that failure is handled globally in app/main.py
+    # instead. This try/except only covers failures during the actual
+    # provider request, after construction succeeded.
+    try:
+        embeddings = embedding_service.embed_documents([c.text for c in chunks])
+        vector_store.add_chunks(
+            document_id=document_id,
+            filename=file.filename,
+            chunks=chunks,
+            embeddings=embeddings,
+        )
+    except (EmbeddingGenerationError, VectorStoreError) as e:
+        dest_path.unlink(missing_ok=True)
+        logger.error("document_id=%s ingestion failed: %s", document_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to index the document. Please try again.",
+        ) from e
+
+    logger.info("document_id=%s indexed successfully, %d chunks stored", document_id, len(chunks))
 
     return DocumentUploadResponse(
         document_id=document_id,
