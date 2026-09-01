@@ -1,0 +1,33 @@
+# Render Blueprint for the FastAPI backend.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick the
+# C-H-E-T-A-N/AI-Doc-Reader repo -> Apply. Then set GROQ_API_KEY on the
+# service (Environment tab) — it is intentionally not stored here.
+#
+# Free tier notes:
+#  - the service spins down after ~15 min idle; the next request wakes it
+#    (~30-60 s cold start while the image boots)
+#  - the filesystem is ephemeral: uploaded PDFs and the vector store are
+#    wiped on restart / redeploy. Fine for a demo; add a paid disk or a
+#    hosted vector DB for persistence.
+
+services:
+  - type: web
+    name: ai-doc-reader-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: EMBEDDING_PROVIDER
+        value: local
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_LLM_MODEL
+        value: openai/gpt-oss-120b
+      - key: CORS_ALLOW_ORIGINS
+        value: "*"
+      - key: GROQ_API_KEY
+        sync: false

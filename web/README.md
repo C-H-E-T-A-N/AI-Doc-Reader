@@ -88,14 +88,14 @@ This is a static SPA — any static host works. For Vercel:
 4. Add an **Environment Variable** `VITE_API_BASE_URL` pointing at a
    backend the browser can reach over HTTPS.
 
-   > ⚠️ The FastAPI backend in this project listens on `127.0.0.1:8000`
-   > (local only). A Vercel-hosted page can reach that **only from a
-   > machine that is itself running the backend** — browsers do allow an
-   > HTTPS page to call `http://127.0.0.1`, and CORS is already open. To
-   > share the UI publicly you must also host the backend somewhere with
-   > a public HTTPS URL (Render / Railway / Fly / a VM) and set
-   > `VITE_API_BASE_URL` to that. Users can also override the URL at
-   > runtime via the in-app Settings dialog.
+   > ⚠️ Point `VITE_API_BASE_URL` at a backend the browser can reach over
+   > **HTTPS**. Running the API only on `127.0.0.1:8000` works when you
+   > run the frontend locally too, but a Vercel-hosted page generally
+   > cannot call `http://127.0.0.1` (mixed content). To share the UI
+   > publicly, host the backend as well — the repo root has a
+   > `Dockerfile` and a Render `render.yaml` blueprint for exactly this —
+   > then set `VITE_API_BASE_URL` to that URL. Viewers can also override
+   > it at runtime via the in-app ⚙️ Settings dialog.
 
 Or from the CLI:
 

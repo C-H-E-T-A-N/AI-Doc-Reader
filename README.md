@@ -279,6 +279,24 @@ for setup and deployment.
 cd web && npm install && npm run dev   # http://localhost:3000, expects the API on :8000
 ```
 
+## Deploying
+
+**Frontend** → Vercel (Root Directory `web`, framework auto-detected). Set `VITE_API_BASE_URL`
+to the deployed backend URL.
+
+**Backend** → any container host. A [`Dockerfile`](Dockerfile) and a Render
+[`render.yaml`](render.yaml) blueprint are included; the image defaults to the keyless combo
+(`EMBEDDING_PROVIDER=local`, `LLM_PROVIDER=groq`) and only needs `GROQ_API_KEY` supplied as a
+secret. CORS is open (`CORS_ALLOW_ORIGINS`, default `*`).
+
+```bash
+docker build -t ai-doc-reader-api .
+docker run -p 8000:8000 -e GROQ_API_KEY=gsk_... ai-doc-reader-api
+```
+
+On free tiers the filesystem is ephemeral — uploaded PDFs and the vector store are lost on
+restart. Add a persistent disk or swap ChromaDB for a hosted vector DB for a real deployment.
+
 ## Environment variables
 
 See `.env.example` for the full list with defaults. Summary:
