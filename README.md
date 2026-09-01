@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 9 of 12 complete (error handling + logging). See "Build stages" below.
+> Status: Stage 10 of 12 complete (full test suite). See "Build stages" below.
 
 ## What this project does
 
@@ -189,7 +189,7 @@ This project is being built incrementally, as a teaching exercise, in this order
 7. ✅ Prompt construction + LLM service -- real generation needs `ANTHROPIC_API_KEY` in `.env`
 8. ✅ `/chat` endpoint + wired-up ingestion — full pipeline works end-to-end
 9. ✅ Error handling + logging
-10. Test suite
+10. ✅ Test suite
 11. Evaluation harness
 12. Full documentation
 
@@ -204,11 +204,33 @@ LangChain/LlamaIndex would give you for free.
 pytest
 ```
 
-Covers every service (chunking, embeddings, vector store, retriever, prompt construction, LLM
-service) plus API-level tests for the full upload → chat pipeline and the error-handling paths
-(missing API key, provider failures, unexpected exceptions) -- 46 tests total, all using fake
-providers and temp directories, no network or API key required. More edge cases and
-RAG-specific grounding tests are added in Stage 10/11.
+51 tests, all using fake providers and temp directories -- no network or API key required:
+
+| File | Covers |
+|---|---|
+| `test_chunker.py` | word-boundary splitting, overlap, page tagging |
+| `test_embeddings.py` | `EmbeddingService` interface, batching, missing-key error |
+| `test_vector_store.py` | add/search/delete, ranking, metadata, missing-key isolation |
+| `test_retriever.py` | embed→search composition, ranking, top_k, citations |
+| `test_prompt_builder.py` | grounding instructions, citation formatting, empty-context case |
+| `test_llm.py` | `LLMService` interface, missing-key error |
+| `test_api.py` | upload/chat happy paths, invalid file, empty file, empty question |
+| `test_error_handling.py` | missing key → 503, provider failure → 502, unexpected → 500 |
+| `test_rag.py` | see below -- retrieval/grounding correctness, not just API contract |
+
+`test_rag.py` is qualitatively different from the others: it checks whether the system
+actually behaves like RAG is supposed to, not just whether an endpoint returns the right
+status code. It uses a bag-of-words fake embedding provider (real, if crude, cosine similarity
+over a small shared vocabulary -- closer to how a real model behaves than a single-keyword
+flag) and a fake LLM that only answers when both the *question* and the *retrieved context*
+actually support the fact, mirroring the Stage 7 system prompt's instructions. Five scenarios,
+matching the spec: an answerable question, an unanswerable one (verifying refusal, not
+fabrication), a topically-similar-but-non-answering case, multiple documents, and an answer
+that requires combining multiple retrieved chunks.
+
+`conftest.py` adds one autouse fixture that redirects `settings.upload_dir` to a per-test temp
+directory, so no test (this stage found several that did) writes real files into the project's
+actual `data/uploads/`.
 
 ## Error handling
 
@@ -249,8 +271,9 @@ llm response generated, answer_length=42
 - Text-based PDFs only for now; scanned/image PDFs need OCR (out of scope for this version —
   see `app/services/document_loader.py` for why).
 - Encrypted/password-protected PDFs are rejected rather than prompted for a password.
-- API tests write real files to `data/uploads/` rather than an isolated temp directory --
-  functionally correct but not fully isolated; proper test-level isolation of `UPLOAD_DIR` is
-  addressed in Stage 10.
+- `similarity_search` has no minimum-relevance threshold -- it always returns up to `top_k`
+  results, however weak the match. The grounding safety net today is entirely the LLM
+  following its system prompt, not retrieval filtering out irrelevant chunks. A relevance
+  threshold (or reranking) is a Phase 2 improvement.
 - No conversation history -- each `/chat` call is independent; no evaluation harness yet
-  (Stage 11) to measure retrieval/answer quality beyond manual inspection.
+  (Stage 11) to measure retrieval/answer quality against real (non-fake) providers.
