@@ -30,7 +30,10 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_embedding_model: str = "gemini-embedding-001"
-    gemini_llm_model: str = "gemini-2.5-flash"
+    # "gemini-2.5-flash" is deprecated for new API keys as of this
+    # writing (the API itself returns a 404 pointing here). Verified
+    # working against a real key during Stage development.
+    gemini_llm_model: str = "gemini-3.6-flash"
 
     # --- Chunking ---
     chunk_size: int = 500

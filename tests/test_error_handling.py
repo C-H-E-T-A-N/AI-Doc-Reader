@@ -16,6 +16,7 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.dependencies import get_embedding_service, get_llm_service, get_vector_store
 from app.main import app
 from app.services.embeddings import EmbeddingGenerationError, EmbeddingProvider, EmbeddingService
@@ -52,12 +53,42 @@ class CrashingLLMProvider(LLMProvider):
         raise RuntimeError("something truly unexpected")
 
 
-def test_chat_returns_503_when_api_key_is_missing():
-    # No overrides at all -- real EmbeddingService/LLMService get
-    # constructed. This environment has no OPENAI_API_KEY/
-    # ANTHROPIC_API_KEY set, so construction fails with
-    # ConfigurationError during dependency resolution, which app/main.py's
-    # global handler must turn into a 503, not a 500.
+@pytest.fixture
+def force_missing_api_key(monkeypatch):
+    """
+    Deterministically force EmbeddingService/LLMService construction to
+    fail with a missing-key ConfigurationError, regardless of whatever
+    provider/keys are actually configured in this environment's .env.
+
+    This must NOT depend on ambient environment state ("just don't set
+    a key") -- that's exactly what broke silently once a real .env with
+    a working Gemini key was added during development: the "real"
+    construction then succeeded and made an actual ~20s network call
+    instead of failing fast, turning a unit-speed test into a live
+    integration test with a wrong expected status code.
+
+    get_embedding_service/get_llm_service are @lru_cache'd singletons
+    (app/dependencies.py) -- clearing the cache is necessary so a
+    provider instance built successfully by an earlier test (or an
+    earlier call in this same test) isn't reused instead of hitting the
+    forced-missing-key path.
+    """
+    monkeypatch.setattr(settings, "embedding_provider", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    get_embedding_service.cache_clear()
+    get_llm_service.cache_clear()
+    yield
+    get_embedding_service.cache_clear()
+    get_llm_service.cache_clear()
+
+
+def test_chat_returns_503_when_api_key_is_missing(force_missing_api_key):
+    # No dependency overrides -- real EmbeddingService/LLMService get
+    # constructed, and construction fails with ConfigurationError during
+    # dependency resolution, which app/main.py's global handler must
+    # turn into a 503, not a 500.
     client = TestClient(app)
     response = client.post("/chat", json={"question": "anything"})
 
@@ -121,7 +152,7 @@ def test_chat_returns_generic_500_for_a_truly_unexpected_error(tmp_path):
     assert "truly unexpected" not in response.text
 
 
-def test_upload_returns_503_when_api_key_is_missing():
+def test_upload_returns_503_when_api_key_is_missing(force_missing_api_key):
     client = TestClient(app)
     doc = fitz.open()
     page = doc.new_page()

@@ -77,6 +77,24 @@ class GeminiLLMProvider(LLMProvider):
             )
         except genai_errors.APIError as e:
             raise LLMGenerationError(f"LLM request failed: {e}") from e
+
+        if response.text is None:
+            # Gemini's newer models spend part of max_output_tokens on
+            # internal "thinking" before writing the visible answer. If
+            # the token budget runs out mid-thought, generate_content
+            # returns successfully (no exception) but .text is None --
+            # confirmed by testing against a real key: a trivial prompt
+            # with max_output_tokens=100 hit finish_reason=MAX_TOKENS
+            # having spent it all on ~190 hidden thinking tokens. Silently
+            # returning None here would violate this method's contract
+            # (LLMProvider.generate must return str) and surface as a
+            # confusing crash much further downstream.
+            finish_reason = response.candidates[0].finish_reason if response.candidates else "unknown"
+            raise LLMGenerationError(
+                f"Gemini returned no answer text (finish_reason={finish_reason}). "
+                "This usually means max_output_tokens was too small for the model's "
+                "internal reasoning plus the answer -- try increasing it."
+            )
         return response.text
 
 

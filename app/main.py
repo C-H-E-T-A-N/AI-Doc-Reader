@@ -34,6 +34,11 @@ from app.services.exceptions import ConfigurationError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# The google-genai SDK logs a harmless advisory on every non-streaming
+# call ("Direct use of automatic function calling...") at WARNING level,
+# which would otherwise clutter the clean pipeline logs from Stage 9.
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
+
 app = FastAPI(
     title="RAG Document Q&A API",
     description="A from-scratch Retrieval-Augmented Generation pipeline, built as a learning project.",
