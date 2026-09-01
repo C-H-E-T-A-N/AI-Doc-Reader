@@ -120,7 +120,14 @@ def test_question_with_an_existing_answer_is_answered_and_cited(client):
 
     assert response.status_code == 200
     assert body["answer"] == "Employees are entitled to 24 paid leaves per year."
-    assert body["sources"] == [{"filename": "handbook.pdf", "page": 1}]
+    assert len(body["sources"]) == 1
+    source = body["sources"][0]
+    assert source["filename"] == "handbook.pdf"
+    assert source["page"] == 1
+    # Sources now carry the retrieved passage and its similarity score
+    # so the UI can render a citation snippet.
+    assert source["text"]
+    assert isinstance(source["score"], (int, float))
 
 
 # 2. Question whose answer does not exist.

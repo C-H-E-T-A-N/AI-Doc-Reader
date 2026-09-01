@@ -90,16 +90,28 @@ class VectorStore:
         except Exception as e:
             raise VectorStoreError(f"Failed to store chunks in the vector database: {e}") from e
 
-    def similarity_search(self, query_embedding: list[float], top_k: int) -> list[dict]:
-        """Return up to top_k chunks closest to query_embedding, best match first."""
+    def similarity_search(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        where: dict | None = None,
+    ) -> list[dict]:
+        """Return up to top_k chunks closest to query_embedding, best match first.
+
+        `where` is an optional Chroma metadata filter, e.g.
+        {"document_id": "..."} to restrict the search to a single document.
+        """
         try:
             count = self._collection.count()
             if count == 0:
                 return []
-            results = self._collection.query(
-                query_embeddings=[query_embedding],
-                n_results=min(top_k, count),
-            )
+            query_kwargs: dict = {
+                "query_embeddings": [query_embedding],
+                "n_results": min(top_k, count),
+            }
+            if where:
+                query_kwargs["where"] = where
+            results = self._collection.query(**query_kwargs)
         except Exception as e:
             raise VectorStoreError(f"Vector search failed: {e}") from e
 

@@ -268,6 +268,17 @@ uvicorn app.main:app --reload
 curl http://localhost:8000/health
 ```
 
+## Web UI
+
+A React + TypeScript front-end lives in [`web/`](web/) — a document sidebar, a chat area with
+Markdown answers and expandable source citations, upload/delete, light/dark, responsive. It talks
+only to this API (all provider secrets stay server-side). See [`web/README.md`](web/README.md)
+for setup and deployment.
+
+```bash
+cd web && npm install && npm run dev   # http://localhost:3000, expects the API on :8000
+```
+
 ## Environment variables
 
 See `.env.example` for the full list with defaults. Summary:
@@ -305,36 +316,103 @@ curl -X POST http://localhost:8000/documents/upload \
 {
   "document_id": "1024de9a32d5440ab1ec325dffd20ff8",
   "filename": "employee_handbook.pdf",
+  "file_type": "pdf",
+  "size_bytes": 1145433,
   "pages": 20,
   "characters": 45321,
   "chunks_indexed": 94,
-  "status": "uploaded"
+  "uploaded_at": "2026-09-01T10:00:21+00:00",
+  "status": "indexed"
 }
 ```
+
+On success the record is also written to a small registry
+(`data/registry.json`) so it can be listed and fetched later.
+
+### `GET /documents`
+
+Every indexed document, newest first -- the front-end sidebar's data source.
+
+```json
+[
+  {
+    "document_id": "1024de9a32d5440ab1ec325dffd20ff8",
+    "filename": "employee_handbook.pdf",
+    "file_type": "pdf",
+    "size_bytes": 1145433,
+    "pages": 20,
+    "characters": 45321,
+    "chunks": 94,
+    "uploaded_at": "2026-09-01T10:00:21+00:00",
+    "status": "indexed"
+  }
+]
+```
+
+### `GET /documents/{document_id}`
+
+The single registry record above, or `404` if unknown.
+
+### `DELETE /documents/{document_id}`
+
+Removes the document everywhere: its chunks in the vector store, the stored file on disk, and
+its registry entry. `404` if unknown, `{"document_id": "...", "status": "deleted"}` on success.
+
+### `GET /documents/{document_id}/file`
+
+Streams the original PDF (`Content-Disposition: inline`) so a UI can open a cited page.
 
 ### `POST /chat`
 
 Runs the full query pipeline: embed the question, retrieve relevant chunks, build a prompt,
-generate an answer, return it with sources.
+generate an answer, return it with sources. Pass an optional `document_id` to restrict
+retrieval to a single document; omit it to search every indexed document.
 
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"question": "How many paid leaves do employees get?"}'
+  -d '{"question": "How many paid leaves do employees get?",
+       "document_id": "1024de9a32d5440ab1ec325dffd20ff8"}'
 ```
 ```json
 {
   "answer": "Employees are entitled to 24 paid leaves per year.",
   "sources": [
-    {"filename": "employee_handbook.pdf", "page": 5}
+    {
+      "filename": "employee_handbook.pdf",
+      "page": 5,
+      "text": "All confirmed employees are entitled to 24 paid leaves per year ...",
+      "score": 0.6477
+    }
   ]
 }
 ```
+
+`text` and `score` are the retrieved passage and its cosine similarity to the question; both may
+be `null` for older data.
 
 ### `GET /health`
 
 Liveness check, no dependencies constructed -- returns `{"status": "ok"}` even without API keys
 configured.
+
+## Housekeeping
+
+Each upload creates an independent document (random id), so uploading the same PDF twice leaves
+two copies -- two registry rows, two sets of chunks in the vector DB. To clean up:
+
+- **One at a time:** delete from the web UI sidebar, or `DELETE /documents/{id}`.
+- **Duplicates and orphans:** run `scripts/cleanup_db.py` **with the API server stopped**:
+
+  ```bash
+  python scripts/cleanup_db.py --dry-run   # show what would change
+  python scripts/cleanup_db.py             # drop duplicate documents (same filename -> keep newest)
+  python scripts/cleanup_db.py --all       # also remove files / vector chunks not in the registry
+  python scripts/cleanup_db.py --wipe      # remove every document, file and chunk (confirms first)
+  ```
+
+- **Full manual reset:** stop the server, then delete `vector_db/`, `data/uploads/*.pdf`, and
+  `data/registry.json`; they are recreated empty on the next run.
 
 ## Error handling
 

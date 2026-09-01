@@ -1,21 +1,24 @@
 """
 LLM service: a constructed Prompt -> a generated answer, via Anthropic
-Claude by default, or Gemini (settings.llm_provider = "gemini").
+Claude by default, or Gemini / OpenAI (settings.llm_provider =
+"gemini" / "openai").
 
 Same "one seam" pattern as embeddings.py: LLMProvider is the only place
-a provider SDK (`anthropic` or `google.genai`) is imported. Nothing
-else in the app -- not the routes, not the prompt builder -- talks to a
-provider SDK directly. Swapping models, providers, or adding streaming
-later touches only this file.
+a provider SDK (`anthropic`, `google.genai`, `openai`) is imported.
+Nothing else in the app -- not the routes, not the prompt builder --
+talks to a provider SDK directly. Swapping models, providers, or adding
+streaming later touches only this file.
 """
 
 from abc import ABC, abstractmethod
 
 import anthropic
+import openai
 from anthropic import Anthropic
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
+from openai import OpenAI
 
 from app.config import settings
 from app.services.exceptions import ConfigurationError
@@ -98,9 +101,43 @@ class GeminiLLMProvider(LLMProvider):
         return response.text
 
 
+class OpenAILLMProvider(LLMProvider):
+    def __init__(self, api_key: str, model: str, max_tokens: int = 1024):
+        if not api_key:
+            raise ConfigurationError(
+                "OPENAI_API_KEY is not set. LLM generation requires it -- add it to your .env file."
+            )
+        self._client = OpenAI(api_key=api_key)
+        self._model = model
+        self._max_tokens = max_tokens
+
+    def generate(self, prompt: Prompt) -> str:
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                messages=[
+                    {"role": "system", "content": prompt.system},
+                    {"role": "user", "content": prompt.user},
+                ],
+            )
+        except openai.OpenAIError as e:
+            raise LLMGenerationError(f"LLM request failed: {e}") from e
+
+        content = response.choices[0].message.content
+        if content is None:
+            raise LLMGenerationError(
+                f"OpenAI returned no answer text (finish_reason="
+                f"{response.choices[0].finish_reason})."
+            )
+        return content
+
+
 def _default_llm_provider() -> LLMProvider:
     if settings.llm_provider == "gemini":
         return GeminiLLMProvider(api_key=settings.gemini_api_key, model=settings.gemini_llm_model)
+    if settings.llm_provider == "openai":
+        return OpenAILLMProvider(api_key=settings.openai_api_key, model=settings.openai_llm_model)
     return AnthropicLLMProvider(api_key=settings.anthropic_api_key, model=settings.llm_model)
 
 
