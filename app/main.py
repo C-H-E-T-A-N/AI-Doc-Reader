@@ -7,7 +7,7 @@ At this stage the app only exposes a health check — routers for
 
 from fastapi import FastAPI
 
-from app.routes import documents
+from app.routes import chat, documents
 
 app = FastAPI(
     title="RAG Document Q&A API",
@@ -16,6 +16,7 @@ app = FastAPI(
 )
 
 app.include_router(documents.router)
+app.include_router(chat.router)
 
 
 @app.get("/health")

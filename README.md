@@ -4,7 +4,8 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 7 of 12 complete (prompt construction + LLM service). See "Build stages" below.
+> Status: Stage 8 of 12 complete -- the full RAG pipeline works end-to-end. See "Build stages"
+> below.
 
 ## What this project does
 
@@ -125,6 +126,39 @@ uvicorn app.main:app --reload
 curl http://localhost:8000/health
 ```
 
+## Example requests
+
+```bash
+# Upload a PDF (extracts, chunks, embeds, and indexes it)
+curl -X POST http://localhost:8000/documents/upload \
+  -F "file=@employee_handbook.pdf"
+```
+```json
+{
+  "document_id": "1024de9a32d5440ab1ec325dffd20ff8",
+  "filename": "employee_handbook.pdf",
+  "pages": 20,
+  "characters": 45321,
+  "chunks_indexed": 94,
+  "status": "uploaded"
+}
+```
+
+```bash
+# Ask a question about uploaded documents
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How many paid leaves do employees get?"}'
+```
+```json
+{
+  "answer": "Employees are entitled to 24 paid leaves per year.",
+  "sources": [
+    {"filename": "employee_handbook.pdf", "page": 5}
+  ]
+}
+```
+
 ## Environment variables
 
 See `.env.example` for the full list with defaults. Summary:
@@ -154,7 +188,7 @@ This project is being built incrementally, as a teaching exercise, in this order
 5. ✅ Vector store (ChromaDB)
 6. ✅ Retrieval
 7. ✅ Prompt construction + LLM service -- real generation needs `ANTHROPIC_API_KEY` in `.env`
-8. `/chat` endpoint — full pipeline wired together
+8. ✅ `/chat` endpoint + wired-up ingestion — full pipeline works end-to-end
 9. Error handling + logging
 10. Test suite
 11. Evaluation harness
@@ -171,15 +205,21 @@ LangChain/LlamaIndex would give you for free.
 pytest
 ```
 
-Currently covers: chunking, the embedding service, the vector store, the retriever, prompt
-construction, and the LLM service interface -- 32 tests total, all using fakes/temp
-directories, no network or API key required. More is added at each stage; the full suite
-(unit + API + RAG-specific tests) is built out in Stage 10.
+Covers every service (chunking, embeddings, vector store, retriever, prompt construction, LLM
+service) plus API-level tests for the full upload → chat pipeline -- 40 tests total, all using
+fake providers and temp directories, no network or API key required. More edge cases and
+RAG-specific grounding tests are added in Stage 10/11.
 
 ## Known limitations (current stage)
 
-- `POST /documents/upload` extracts and validates text but does not yet chunk, embed, or
-  store anything — no `/chat` endpoint exists yet. That wiring happens in later stages.
+- No `.env` with real API keys has been used in development so far -- everything above is
+  verified with fake providers via dependency injection. Real embeddings/LLM calls are
+  untested until keys are supplied (see "Environment variables").
 - Text-based PDFs only for now; scanned/image PDFs need OCR (out of scope for this version —
   see `app/services/document_loader.py` for why).
 - Encrypted/password-protected PDFs are rejected rather than prompted for a password.
+- Error handling is minimal so far (missing key, empty question, bad file type/empty file, no
+  extractable text) -- broader coverage (LLM/embedding/vector-DB failures, oversized
+  documents) is Stage 9.
+- No conversation history -- each `/chat` call is independent; no evaluation harness yet
+  (Stage 11) to measure retrieval/answer quality beyond manual inspection.
