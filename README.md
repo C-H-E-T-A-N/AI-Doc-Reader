@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 3 of 12 complete (chunking). See "Build stages" below.
+> Status: Stage 4 of 12 complete (embeddings). See "Build stages" below.
 
 ## What this project does
 
@@ -150,7 +150,7 @@ This project is being built incrementally, as a teaching exercise, in this order
 1. ✅ Environment setup
 2. ✅ Document upload + PDF text extraction
 3. ✅ Chunking
-4. Embeddings (concept walkthrough + service)
+4. ✅ Embeddings (concept walkthrough + service) -- real API calls need `OPENAI_API_KEY` in `.env`
 5. Vector store (ChromaDB)
 6. Retrieval
 7. Prompt construction + LLM service
@@ -171,8 +171,10 @@ LangChain/LlamaIndex would give you for free.
 pytest
 ```
 
-Currently covers: chunking (`tests/test_chunker.py`). More is added at each stage; the full
-suite (unit + API + RAG-specific tests) is built out in Stage 10.
+Currently covers: chunking (`tests/test_chunker.py`), the embedding service interface
+(`tests/test_embeddings.py`, using a fake provider -- no network/API key required to run
+tests). More is added at each stage; the full suite (unit + API + RAG-specific tests) is
+built out in Stage 10.
 
 ## Known limitations (current stage)
 
