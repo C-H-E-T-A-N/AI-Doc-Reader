@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 1 of 12 complete (environment + skeleton). See "Build stages" below.
+> Status: Stage 2 of 12 complete (document upload + PDF text extraction). See "Build stages" below.
 
 ## What this project does
 
@@ -147,8 +147,8 @@ from the environment (`.env` is git-ignored).
 
 This project is being built incrementally, as a teaching exercise, in this order:
 
-1. ✅ Environment setup (this stage)
-2. Document upload + PDF text extraction
+1. ✅ Environment setup
+2. ✅ Document upload + PDF text extraction
 3. Chunking
 4. Embeddings (concept walkthrough + service)
 5. Vector store (ChromaDB)
@@ -175,6 +175,8 @@ pytest
 
 ## Known limitations (current stage)
 
-- Only the `/health` endpoint exists so far — no document upload or chat yet.
-- Text-based PDFs only for now; scanned/image PDFs need OCR, which is out of scope until
-  we've covered the fundamentals (explained further in Stage 2/3).
+- `POST /documents/upload` extracts and validates text but does not yet chunk, embed, or
+  store anything — no `/chat` endpoint exists yet. That wiring happens in later stages.
+- Text-based PDFs only for now; scanned/image PDFs need OCR (out of scope for this version —
+  see `app/services/document_loader.py` for why).
+- Encrypted/password-protected PDFs are rejected rather than prompted for a password.
