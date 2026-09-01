@@ -5,9 +5,10 @@ in Phase 1) so every stage of the pipeline is visible and understood, not hidden
 framework call. Upload a PDF, ask questions about it, get answers grounded in the document's
 actual content, with citations back to the source page.
 
-> Status: all 12 build stages complete. The full pipeline works end-to-end (verified with fake
-> providers via dependency injection -- see "Known limitations" for what's untested with real
-> API keys). See "Build stages" for how this was built, one concept at a time.
+> Status: all 12 build stages complete, verified against a real provider (Gemini) end-to-end --
+> real upload, real embeddings, real retrieval, real generation, correct grounded answer for an
+> answerable question and a correct refusal (not a hallucination) for an unanswerable one. See
+> "Build stages" for how this was built, one concept at a time.
 
 ## Table of contents
 
@@ -195,15 +196,22 @@ instructed, not something inherent to handing an LLM some text.
 | API framework | FastAPI | already known, async-friendly, great for teaching request/response shape of each pipeline stage |
 | PDF text extraction | PyMuPDF (`fitz`) | fast, reliable text-layer extraction, gives per-page text + metadata cheaply |
 | Chunking | hand-rolled, word-boundary-aware with overlap | transparent — we control exactly how splitting works, no hidden heuristics |
-| Embeddings | OpenAI `text-embedding-3-small` (API) | no heavy local ML dependency (avoids pulling in `torch`/`sentence-transformers`, which would bloat the environment); production-realistic — most real systems call an embedding API rather than hosting a model. Kept behind an `EmbeddingService` interface so it can be swapped for a local model later without touching the rest of the app. |
+| Embeddings | OpenAI `text-embedding-3-small` (API), Gemini as an alternative | no heavy local ML dependency (avoids pulling in `torch`/`sentence-transformers`, which would bloat the environment); production-realistic — most real systems call an embedding API rather than hosting a model. Kept behind an `EmbeddingService` interface so the provider can be swapped without touching the rest of the app -- proven in practice, not just in theory: Gemini support was added and verified end-to-end without changing a single route, retrieval, or prompt-construction line. |
 | Vector database | ChromaDB (local, file-backed) | zero external infra to run, persists to disk, good enough similarity search to learn the concepts before reaching for Pinecone/Weaviate/pgvector in a "real" deployment |
-| LLM | Anthropic Claude (API) | strong instruction-following for "answer only from this context", generous context window for stuffing retrieved chunks |
+| LLM | Anthropic Claude (API), Gemini as an alternative | strong instruction-following for "answer only from this context", generous context window for stuffing retrieved chunks |
 | Testing | pytest | already known |
 
 We are **not** using LangChain/LlamaIndex, on purpose: the goal of Phase 1 is to understand
 what each pipeline stage actually does, which a framework's high-level `.from_documents()`-style
 API would hide. Phase 2 (see "Future improvements") revisits this once the fundamentals are
 solid, comparing this hand-rolled pipeline against what a framework provides for free.
+
+**Provider abstraction, proven, not just designed:** `EMBEDDING_PROVIDER`/`LLM_PROVIDER` (see
+"Environment variables") select OpenAI/Anthropic (default) or Gemini. One Gemini API key (free
+tier available) covers both embeddings and generation. Wiring it in required zero changes to
+`app/routes/`, `retriever.py`, or `prompt_builder.py` -- only new provider classes in
+`embeddings.py`/`llm.py` -- which is the actual payoff of the `EmbeddingProvider`/`LLMProvider`
+seam from Stages 4 and 7, demonstrated rather than just asserted.
 
 ## Project structure
 
@@ -266,10 +274,14 @@ See `.env.example` for the full list with defaults. Summary:
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | used only by the embedding service |
-| `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | which embedding model, and its output vector size |
-| `ANTHROPIC_API_KEY` | used only by the LLM service |
+| `EMBEDDING_PROVIDER` | `openai` (default) or `gemini` -- which class `EmbeddingService` constructs |
+| `LLM_PROVIDER` | `anthropic` (default) or `gemini` -- which class `LLMService` constructs |
+| `OPENAI_API_KEY` | used when `EMBEDDING_PROVIDER=openai` |
+| `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | which OpenAI embedding model, and its output vector size |
+| `ANTHROPIC_API_KEY` | used when `LLM_PROVIDER=anthropic` |
 | `LLM_MODEL` | which Claude model generates answers |
+| `GEMINI_API_KEY` | used when `EMBEDDING_PROVIDER=gemini` and/or `LLM_PROVIDER=gemini` -- one key covers both |
+| `GEMINI_EMBEDDING_MODEL`, `GEMINI_LLM_MODEL` | which Gemini models to use |
 | `CHUNK_SIZE`, `CHUNK_OVERLAP` | chunking parameters |
 | `TOP_K` | how many chunks to retrieve per question |
 | `UPLOAD_DIR`, `VECTOR_DB_DIR`, `CHROMA_COLLECTION_NAME` | storage locations |
@@ -361,7 +373,7 @@ llm response generated, answer_length=42
 pytest
 ```
 
-53 tests, all using fake providers and temp directories — no network or API key required:
+55 tests, all using fake providers and temp directories — no network or API key required:
 
 | File | Covers |
 |---|---|
@@ -438,9 +450,15 @@ This project was built incrementally, as a teaching exercise, one concept at a t
 
 ## Known limitations
 
-- No `.env` with real API keys has been used in development so far — every stage above is
-  verified with fake providers via dependency injection. Real embeddings/LLM calls (and their
-  actual quality) are untested until keys are supplied.
+- Verified end-to-end against Gemini (`EMBEDDING_PROVIDER=gemini`, `LLM_PROVIDER=gemini`), not
+  against the OpenAI/Anthropic default path -- that combination is still only tested with fakes.
+  Getting the Gemini run working surfaced real issues fakes couldn't have caught: the originally
+  configured default model was deprecated for new API keys (404), and Gemini's newer models can
+  return a successful response with no answer text if `max_output_tokens` runs out during
+  internal "thinking" before any visible output -- both are now handled explicitly (see
+  `app/services/llm.py` and `app/config.py`).
+- Gemini's free tier has a low per-minute rate limit -- a `429` during a quick succession of
+  requests is expected, not a bug; the app correctly turns it into a `502`, not a crash.
 - Text-based PDFs only; scanned/image PDFs need OCR (out of scope for this version — see
   `app/services/document_loader.py` for why).
 - Encrypted/password-protected PDFs are rejected rather than prompted for a password.
