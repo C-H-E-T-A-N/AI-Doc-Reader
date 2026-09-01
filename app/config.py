@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # llm_provider == "groq": OpenAI-compatible endpoint, generous free
     # tier, no card. Key from https://console.groq.com/keys
     groq_api_key: str = ""
-    groq_llm_model: str = "llama-3.3-70b-versatile"
+    groq_llm_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
     anthropic_api_key: str = ""

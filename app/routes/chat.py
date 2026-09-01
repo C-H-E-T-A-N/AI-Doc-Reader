@@ -64,7 +64,7 @@ def chat(
 
         prompt = build_prompt(question, chunks)
 
-        logger.info("llm request sending, model=%s", settings.llm_model)
+        logger.info("llm request sending, provider=%s", settings.llm_provider)
         answer = llm.generate(prompt)
         logger.info("llm response generated, answer_length=%d", len(answer))
     except (EmbeddingGenerationError, VectorStoreError) as e:
