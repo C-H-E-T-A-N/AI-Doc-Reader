@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) pipeline built **from scratch** (no LangC
 in phase 1) so every stage of the pipeline is visible and understood, not hidden behind a
 framework call.
 
-> Status: Stage 10 of 12 complete (full test suite). See "Build stages" below.
+> Status: Stage 11 of 12 complete (evaluation harness). See "Build stages" below.
 
 ## What this project does
 
@@ -190,13 +190,42 @@ This project is being built incrementally, as a teaching exercise, in this order
 8. ✅ `/chat` endpoint + wired-up ingestion — full pipeline works end-to-end
 9. ✅ Error handling + logging
 10. ✅ Test suite
-11. Evaluation harness
+11. ✅ Evaluation harness
 12. Full documentation
 
 **Phase 2** (after the above works end-to-end): better chunking strategies, metadata
 filtering, hybrid search, reranking, query rewriting, context compression, conversation
 history, streaming responses, better citations — then a comparison against what
 LangChain/LlamaIndex would give you for free.
+
+## Evaluation
+
+Testing checks whether the code runs correctly; evaluation checks whether the *system* is good
+at its actual job -- retrieving the right chunk and answering only when grounded. Run it with:
+
+```bash
+python -m eval.run_eval             # real OpenAI/Anthropic APIs -- needs .env keys
+python -m eval.run_eval --dry-run   # fake providers -- proves the harness works, not real quality
+```
+
+`eval/questions.json` is a small hand-labeled set (5 questions) against a self-contained demo
+corpus defined in `eval/run_eval.py` -- two documents, three topics covered, two topics
+deliberately left uncovered so some questions are genuinely unanswerable. For each question the
+harness measures:
+
+- **retrieval hit rate** -- for answerable questions, was the expected source document actually
+  retrieved? (If not, nothing downstream can succeed.)
+- **groundedness** -- does the generated answer actually contain the expected fact?
+- **hallucination rate** -- for unanswerable questions, did the system fabricate a
+  confident-sounding answer instead of refusing? (Detected here via a refusal-phrase heuristic;
+  a production setup might use a second LLM call as an automated judge instead.)
+
+`--dry-run` uses a bag-of-words fake embedding provider and a fake LLM so the harness can be
+demonstrated with no API keys and no cost -- but it can only prove the harness's own
+ingestion → retrieval → prompt → metric pipeline is wired correctly, never real system quality.
+A hand-run demo confirmed the hallucination check actually catches a bad case: a simulated
+poorly-grounded LLM that confidently answered "10 sick leave days" (a fact present in neither
+document) was correctly flagged `HALLUCINATION`, not silently accepted.
 
 ## Testing
 
@@ -217,6 +246,7 @@ pytest
 | `test_api.py` | upload/chat happy paths, invalid file, empty file, empty question |
 | `test_error_handling.py` | missing key → 503, provider failure → 502, unexpected → 500 |
 | `test_rag.py` | see below -- retrieval/grounding correctness, not just API contract |
+| `test_eval.py` | regression tests for the evaluation harness's own verdict logic |
 
 `test_rag.py` is qualitatively different from the others: it checks whether the system
 actually behaves like RAG is supposed to, not just whether an endpoint returns the right

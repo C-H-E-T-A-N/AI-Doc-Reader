@@ -1,0 +1,37 @@
+[
+  {
+    "id": "q1",
+    "question": "How many paid leaves do employees get per year?",
+    "expected_source": "employee_handbook.pdf",
+    "answerable": true,
+    "answer_must_contain": ["24"]
+  },
+  {
+    "id": "q2",
+    "question": "What is the office WiFi password?",
+    "expected_source": "it_policy.pdf",
+    "answerable": true,
+    "answer_must_contain": ["router"]
+  },
+  {
+    "id": "q3",
+    "question": "What is the dress code policy?",
+    "expected_source": "employee_handbook.pdf",
+    "answerable": true,
+    "answer_must_contain": ["casual"]
+  },
+  {
+    "id": "q4",
+    "question": "How many sick leave days are employees allowed per year?",
+    "expected_source": null,
+    "answerable": false,
+    "answer_must_contain": []
+  },
+  {
+    "id": "q5",
+    "question": "What is the company's parking reimbursement policy?",
+    "expected_source": null,
+    "answerable": false,
+    "answer_must_contain": []
+  }
+]
