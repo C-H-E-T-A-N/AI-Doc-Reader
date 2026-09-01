@@ -13,6 +13,8 @@ pymupdf==1.25.1             # imported as `fitz`
 
 # --- Vector database ---
 chromadb==0.5.23
+posthog<4          # chromadb 0.5.23's telemetry client calls posthog's old capture() signature;
+                    # posthog>=4 changed it, which surfaces as noisy (harmless) telemetry errors
 
 # --- Providers (kept behind our own abstraction, see services/) ---
 openai==1.58.1               # embeddings: text-embedding-3-small
