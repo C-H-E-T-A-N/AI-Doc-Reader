@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Uploaded documents and vector DB data (runtime artifacts, not source)
+data/uploads/*
+!data/uploads/.gitkeep
+vector_db/*
+!vector_db/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,24 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20   # required by FastAPI to accept file uploads
+
+# --- Config / env ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# --- PDF text extraction ---
+pymupdf==1.25.1             # imported as `fitz`
+
+# --- Vector database ---
+chromadb==0.5.23
+
+# --- Providers (kept behind our own abstraction, see services/) ---
+openai==1.58.1               # embeddings: text-embedding-3-small
+anthropic==0.42.0            # LLM: claude for answer generation
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1                # used by FastAPI's TestClient
