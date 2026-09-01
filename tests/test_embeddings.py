@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.embeddings import EmbeddingProvider, EmbeddingService, OpenAIEmbeddingProvider
+from app.services.embeddings import EmbeddingProvider, EmbeddingService, GeminiEmbeddingProvider, OpenAIEmbeddingProvider
 
 
 class FakeProvider(EmbeddingProvider):
@@ -51,3 +51,8 @@ def test_embed_documents_batches_in_a_single_provider_call():
 def test_openai_provider_requires_an_api_key():
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         OpenAIEmbeddingProvider(api_key="", model="text-embedding-3-small")
+
+
+def test_gemini_provider_requires_an_api_key():
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+        GeminiEmbeddingProvider(api_key="", model="gemini-embedding-001")

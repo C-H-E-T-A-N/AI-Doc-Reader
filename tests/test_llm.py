@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.llm import AnthropicLLMProvider, LLMProvider, LLMService
+from app.services.llm import AnthropicLLMProvider, GeminiLLMProvider, LLMProvider, LLMService
 from app.services.prompt_builder import Prompt
 
 
@@ -28,3 +28,8 @@ def test_llm_service_delegates_to_its_provider():
 def test_anthropic_provider_requires_an_api_key():
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
         AnthropicLLMProvider(api_key="", model="claude-sonnet-5")
+
+
+def test_gemini_provider_requires_an_api_key():
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+        GeminiLLMProvider(api_key="", model="gemini-2.5-flash")

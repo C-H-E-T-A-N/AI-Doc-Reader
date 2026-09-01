@@ -4,7 +4,8 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20   # required by FastAPI to accept file uploads
 
 # --- Config / env ---
-pydantic==2.10.4
+pydantic==2.13.5    # bumped from 2.10.4: google-genai requires a newer pydantic than chromadb pins,
+                    # pip resolves to this automatically -- pinned explicitly for reproducible installs
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
 
@@ -19,6 +20,7 @@ posthog<4          # chromadb 0.5.23's telemetry client calls posthog's old capt
 # --- Providers (kept behind our own abstraction, see services/) ---
 openai==1.58.1               # embeddings: text-embedding-3-small
 anthropic==0.42.0            # LLM: claude for answer generation
+google-genai==2.21.0          # optional alternative: Gemini for embeddings and/or LLM
 
 # --- Testing ---
 pytest==8.3.4

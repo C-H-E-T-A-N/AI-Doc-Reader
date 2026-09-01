@@ -13,12 +13,24 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # --- Providers ---
+    # embedding_provider/llm_provider select which class EmbeddingService/
+    # LLMService construct by default (see app/services/embeddings.py and
+    # llm.py) -- "openai"/"anthropic" (default) or "gemini". Switching
+    # providers never touches routes, retrieval, or prompt code: that's
+    # the point of the EmbeddingProvider/LLMProvider abstraction.
+    embedding_provider: str = "openai"
+    llm_provider: str = "anthropic"
+
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
     anthropic_api_key: str = ""
     llm_model: str = "claude-sonnet-5"
+
+    gemini_api_key: str = ""
+    gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_llm_model: str = "gemini-2.5-flash"
 
     # --- Chunking ---
     chunk_size: int = 500

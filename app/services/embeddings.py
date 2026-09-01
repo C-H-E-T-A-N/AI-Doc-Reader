@@ -1,5 +1,6 @@
 """
-Text -> vector, via a real embedding model (OpenAI's text-embedding-3-small).
+Text -> vector, via a real embedding model (OpenAI by default, Gemini
+as an alternative -- see settings.embedding_provider).
 
 See the hand-rolled cosine-similarity demo run alongside this stage for
 the concept in isolation. The short version: a trained embedding model
@@ -10,18 +11,21 @@ cannot do.
 
 Provider abstraction
 ---------------------
-`EmbeddingProvider` is the only place the `openai` SDK is imported.
-Everything else in this app talks to `EmbeddingService`, which doesn't
-know or care which provider is behind it. If we later swap to a
-different embedding API (or a local model), only this file changes --
-routes, the chunker, the vector store, and tests referencing
-EmbeddingService stay untouched. This is the same "one seam, swap the
-implementation" pattern used for the LLM service later.
+`EmbeddingProvider` is the only place a provider SDK (`openai` or
+`google.genai`) is imported. Everything else in this app talks to
+`EmbeddingService`, which doesn't know or care which provider is behind
+it. Adding GeminiEmbeddingProvider below required zero changes to
+routes, the chunker, the vector store, or existing tests -- that's the
+actual point of the abstraction, not just a design nicety. This is the
+same "one seam, swap the implementation" pattern used for the LLM
+service.
 """
 
 from abc import ABC, abstractmethod
 
 import openai
+from google import genai
+from google.genai import errors as genai_errors
 from openai import OpenAI
 
 from app.config import settings
@@ -62,6 +66,29 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         return [item.embedding for item in response.data]
 
 
+class GeminiEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, api_key: str, model: str):
+        if not api_key:
+            raise ConfigurationError(
+                "GEMINI_API_KEY is not set. Embeddings require it -- add it to your .env file."
+            )
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        try:
+            response = self._client.models.embed_content(model=self._model, contents=texts)
+        except genai_errors.APIError as e:
+            raise EmbeddingGenerationError(f"Embedding request failed: {e}") from e
+        return [embedding.values for embedding in response.embeddings]
+
+
+def _default_embedding_provider() -> EmbeddingProvider:
+    if settings.embedding_provider == "gemini":
+        return GeminiEmbeddingProvider(api_key=settings.gemini_api_key, model=settings.gemini_embedding_model)
+    return OpenAIEmbeddingProvider(api_key=settings.openai_api_key, model=settings.embedding_model)
+
+
 class EmbeddingService:
     """
     The interface the rest of the app uses.
@@ -74,10 +101,7 @@ class EmbeddingService:
     """
 
     def __init__(self, provider: EmbeddingProvider | None = None):
-        self._provider = provider or OpenAIEmbeddingProvider(
-            api_key=settings.openai_api_key,
-            model=settings.embedding_model,
-        )
+        self._provider = provider or _default_embedding_provider()
 
     def embed_text(self, text: str) -> list[float]:
         return self._provider.embed([text])[0]
